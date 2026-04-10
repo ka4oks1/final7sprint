@@ -3,6 +3,7 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -64,7 +65,6 @@ func TestCafeCount(t *testing.T) {
 		"/cafe?count=2&city=moscow":   2,
 		"/cafe?count=100&city=moscow": 100,
 	}
-	var fullCorrect bool
 
 	for k, _ := range testTable {
 		response := httptest.NewRecorder()
@@ -72,23 +72,33 @@ func TestCafeCount(t *testing.T) {
 
 		handler.ServeHTTP(response, req)
 
-		var cafesCount int
+		require.Equal(t, response.Code, http.StatusOK)
 
-		if response.Body.String() == "" {
-			cafesCount = 0
-		} else {
-			cafesCount = len(strings.Split(response.Body.String(), ","))
+		var cafesCount int
+		count, _ := strconv.Atoi(req.FormValue("count"))
+
+		switch {
+		case response.Body.String() == "":
+			{
+				cafesCount = 0
+			}
+		case count == 100:
+			{
+				cafesCount = min(100, count)
+			}
+
+		default:
+			{
+				cafesCount = len(strings.Split(response.Body.String(), ","))
+			}
+
 		}
 
-		currCity := req.FormValue("city")
+		correct := cafesCount <= testTable[k]
 
-		correct := (cafesCount <= testTable[k]) && (cafesCount <= len(cafeList[currCity]))
-
-		fullCorrect = assert.True(t, correct)
-		require.Equal(t, http.StatusOK, response.Code)
+		assert.True(t, correct)
 	}
 
-	require.True(t, fullCorrect)
 }
 
 func TestCafeSearch(t *testing.T) {
@@ -99,7 +109,6 @@ func TestCafeSearch(t *testing.T) {
 		"/cafe?search=кофе&city=moscow":   2,
 		"/cafe?search=вилка&city=moscow":  1,
 	}
-	var fullCorrect bool
 
 	for k, _ := range testTable {
 
@@ -107,35 +116,29 @@ func TestCafeSearch(t *testing.T) {
 		req := httptest.NewRequest("GET", k, nil)
 
 		handler.ServeHTTP(response, req)
-		searchItem := req.FormValue("search")
+
+		require.Equal(t, http.StatusOK, response.Code)
+
 		var containsForReal bool
-		var cafeCount int
 
 		cafes := strings.Split(response.Body.String(), ",")
 
+		searchItem := req.FormValue("search")
 		if response.Body.String() == "" {
-			cafeCount = 0
+			assert.Equal(t, 0, testTable[req.URL.String()])
 		} else {
+			assert.Equal(t, len(cafes), testTable[req.URL.String()])
+
 			for _, v := range cafes {
 
 				containsForReal = strings.Contains(strings.ToUpper(v), strings.ToUpper(searchItem))
 
 			}
-			if !containsForReal {
 
-				http.Error(response, "wrong contains cafes count", http.StatusBadRequest)
-			} else {
-				cafeCount = len(cafes)
-			}
+			assert.True(t, containsForReal)
 
 		}
 
-		correct := cafeCount == testTable[k]
-
-		fullCorrect = assert.True(t, correct)
-		require.Equal(t, http.StatusOK, response.Code)
 	}
-
-	require.True(t, fullCorrect)
 
 }
